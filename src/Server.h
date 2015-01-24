@@ -9,10 +9,9 @@
 
 #pragma once
 
-#include "OSSupport/SocketThreads.h"
-#include "OSSupport/ListenThread.h"
-
 #include "RCONServer.h"
+
+#include "OSSupport/Network.h"
 
 #ifdef _MSC_VER
 	#pragma warning(push)
@@ -51,12 +50,13 @@ namespace Json
 
 
 class cServer  // tolua_export
-	: public cListenThread::cCallback
 {        // tolua_export
 public:  // tolua_export
 
 	virtual ~cServer() {}
-	bool InitServer(cIniFile & a_SettingsIni, bool a_ShouldAuth);
+	
+	// Returns null pointer on failure
+	static std::unique_ptr<cServer> CreateServer(cIniFile & a_SettingsIni, bool a_ShouldAuth);
 
 	// tolua_begin
 	
@@ -80,7 +80,7 @@ public:  // tolua_export
 
 	// tolua_end
 
-	bool Start(void);
+	bool Start(cIniFile a_SettingsIni);
 
 	bool Command(cClientHandle & a_Client, AString & a_Cmd);
 	
@@ -145,8 +145,6 @@ public:  // tolua_export
 	bool ShouldAllowBungeeCord(void) const { return m_ShouldAllowBungeeCord; }
 	
 private:
-
-	friend class cRoot;  // so cRoot can create and destroy cServer
 	
 	/** When NotifyClientWrite() is called, it is queued for this thread to process (to avoid deadlocks between cSocketThreads, cClientHandle and cChunkMap) */
 	class cNotifyWriteThread :
@@ -188,11 +186,19 @@ private:
 		virtual void Execute(void) override;
 	} ;
 	
+	class cListenCallbacks :
+		public cNetwork::cListenCallbacks
+	{
+		virtual cTCPLink::cCallbacksPtr OnIncomingConnection(const AString & a_RemoteIPAddress, UInt16 a_RemotePort) override;
+		virtual void OnAccepted(cTCPLink & a_Link) override;
+		virtual void OnError(int a_ErrorCode, const AString & a_ErrorMsg) override;
+	};
+	
 	
 	cNotifyWriteThread m_NotifyWriteThread;
 	
-	cListenThread m_ListenThreadIPv4;
-	cListenThread m_ListenThreadIPv6;
+	/** The cNetwork API handle for the listening socket. */
+	cServerHandlePtrs m_ServerHandles;
 	
 	cCriticalSection  m_CSClients;        ///< Locks client lists
 	cClientHandleList m_Clients;          ///< Clients that are connected to the server and not yet assigned to a cWorld
@@ -250,7 +256,6 @@ private:
 	/** True if BungeeCord handshake packets (with player UUID) should be accepted. */
 	bool m_ShouldAllowBungeeCord;
 
-
 	cServer(void);
 
 	/** Loads, or generates, if missing, RSA keys for protocol encryption */
@@ -262,7 +267,7 @@ private:
 	void TickClients(float a_Dt);
 
 	// cListenThread::cCallback overrides:
-	virtual void OnConnectionAccepted(cSocket & a_Socket) override;
+	//virtual void OnConnectionAccepted(cSocket & a_Socket) override;
 };  // tolua_export
 
 

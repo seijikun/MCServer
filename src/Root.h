@@ -54,7 +54,7 @@ public:
 	void Start(void);
 
 	// tolua_begin
-	cServer * GetServer(void) { return m_Server; }
+	cServer * GetServer(void) { return m_Server.get(); }
 	cWorld *  GetDefaultWorld(void);
 
 	/** Returns a pointer to the world specified
@@ -183,8 +183,8 @@ private:
 
 	std::thread m_InputThread;
 
-	cServer *        m_Server;
-	cMonsterConfig * m_MonsterConfig;
+	std::unique_ptr<cServer> m_Server;
+	cMonsterConfig *         m_MonsterConfig;
 
 	cCraftingRecipes * m_CraftingRecipes;
 	cFurnaceRecipe *   m_FurnaceRecipe;

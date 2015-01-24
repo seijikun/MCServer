@@ -100,8 +100,6 @@ void cServer::cTickThread::Execute(void)
 // cServer:
 
 cServer::cServer(void) :
-	m_ListenThreadIPv4(*this, cSocket::IPv4, "Client"),
-	m_ListenThreadIPv6(*this, cSocket::IPv6, "Client"),
 	m_PlayerCount(0),
 	m_PlayerCountDiff(0),
 	m_ClientViewDistance(0),
@@ -191,60 +189,35 @@ void cServer::PlayerDestroying(const cPlayer * a_Player)
 
 
 
-bool cServer::InitServer(cIniFile & a_SettingsIni, bool a_ShouldAuth)
+std::unique_ptr<cServer> cServer::CreateServer(cIniFile & a_SettingsIni, bool a_ShouldAuth)
 {
-	m_Description = a_SettingsIni.GetValueSet("Server", "Description", "MCServer - in C++!");
-	m_MaxPlayers  = a_SettingsIni.GetValueSetI("Server", "MaxPlayers", 100);
-	m_bIsHardcore = a_SettingsIni.GetValueSetB("Server", "HardcoreEnabled", false);
-	m_bAllowMultiLogin = a_SettingsIni.GetValueSetB("Server", "AllowMultiLogin", false);
-	m_PlayerCount = 0;
-	m_PlayerCountDiff = 0;
 
-	m_FaviconData = Base64Encode(cFile::ReadWholeFile(FILE_IO_PREFIX + AString("favicon.png")));  // Will return empty string if file nonexistant; client doesn't mind
+	auto server = std::unique_ptr<cServer>(new cServer());
+	server->m_Description = a_SettingsIni.GetValueSet("Server", "Description", "MCServer - in C++!");
+	server->m_MaxPlayers  = a_SettingsIni.GetValueSetI("Server", "MaxPlayers", 100);
+	server->m_bIsHardcore = a_SettingsIni.GetValueSetB("Server", "HardcoreEnabled", false);
+	server->m_bAllowMultiLogin = a_SettingsIni.GetValueSetB("Server", "AllowMultiLogin", false);
+	server->m_PlayerCount = 0;
+	server->m_PlayerCountDiff = 0;
 
-	if (m_bIsConnected)
+	server->m_FaviconData = Base64Encode(cFile::ReadWholeFile(FILE_IO_PREFIX + AString("favicon.png")));  // Will return empty string if file nonexistant; client doesn't mind
+
+	if (server->m_bIsConnected)
 	{
 		LOGERROR("ERROR: Trying to initialize server while server is already running!");
-		return false;
+		return std::unique_ptr<cServer>(nullptr);
 	}
 
 	LOGINFO("Compatible clients: %s", MCS_CLIENT_VERSIONS);
 	LOGINFO("Compatible protocol versions %s", MCS_PROTOCOL_VERSIONS);
 
-	if (cSocket::WSAStartup() != 0)  // Only does anything on Windows, but whatever
-	{
-		LOGERROR("WSAStartup() != 0");
-		return false;
-	}
+	server->m_RCONServer.Initialize(a_SettingsIni);
 
-	bool HasAnyPorts = false;
-	AString Ports = a_SettingsIni.GetValueSet("Server", "Port", "25565");
-	m_ListenThreadIPv4.SetReuseAddr(true);
-	if (m_ListenThreadIPv4.Initialize(Ports))
-	{
-		HasAnyPorts = true;
-	}
+	server->m_bIsConnected = true;
 
-	Ports = a_SettingsIni.GetValueSet("Server", "PortsIPv6", "25565");
-	m_ListenThreadIPv6.SetReuseAddr(true);
-	if (m_ListenThreadIPv6.Initialize(Ports))
-	{
-		HasAnyPorts = true;
-	}
-	
-	if (!HasAnyPorts)
-	{
-		LOGERROR("Couldn't open any ports. Aborting the server");
-		return false;
-	}
-
-	m_RCONServer.Initialize(a_SettingsIni);
-
-	m_bIsConnected = true;
-
-	m_ServerID = "-";
-	m_ShouldAuthenticate = a_ShouldAuth;
-	if (m_ShouldAuthenticate)
+	server->m_ServerID = "-";
+	server->m_ShouldAuthenticate = a_ShouldAuth;
+	if (a_ShouldAuth)
 	{
 		MTRand mtrand1;
 		unsigned int r1 = (mtrand1.randInt() % 1147483647) + 1000000000;
@@ -252,37 +225,37 @@ bool cServer::InitServer(cIniFile & a_SettingsIni, bool a_ShouldAuth)
 		std::ostringstream sid;
 		sid << std::hex << r1;
 		sid << std::hex << r2;
-		m_ServerID = sid.str();
-		m_ServerID.resize(16, '0');
+		server->m_ServerID = sid.str();
+		server->m_ServerID.resize(16, '0');
 	}
 
 	// Check if both BungeeCord and online mode are on, if so, warn the admin:
-	m_ShouldAllowBungeeCord = a_SettingsIni.GetValueSetB("Authentication", "AllowBungeeCord", false);
-	if (m_ShouldAllowBungeeCord && m_ShouldAuthenticate)
+	server->m_ShouldAllowBungeeCord = a_SettingsIni.GetValueSetB("Authentication", "AllowBungeeCord", false);
+	if (server->m_ShouldAllowBungeeCord && a_ShouldAuth)
 	{
 		LOGWARNING("WARNING: BungeeCord is allowed and server set to online mode. This is unsafe and will not work properly. Disable either authentication or BungeeCord in settings.ini.");
 	}
 	
-	m_ShouldLoadOfflinePlayerData = a_SettingsIni.GetValueSetB("PlayerData", "LoadOfflinePlayerData", false);
-	m_ShouldLoadNamedPlayerData   = a_SettingsIni.GetValueSetB("PlayerData", "LoadNamedPlayerData", true);
+	server->m_ShouldLoadOfflinePlayerData = a_SettingsIni.GetValueSetB("PlayerData", "LoadOfflinePlayerData", false);
+	server->m_ShouldLoadNamedPlayerData   = a_SettingsIni.GetValueSetB("PlayerData", "LoadNamedPlayerData", true);
 	
-	m_ClientViewDistance = a_SettingsIni.GetValueSetI("Server", "DefaultViewDistance", cClientHandle::DEFAULT_VIEW_DISTANCE);
-	if (m_ClientViewDistance < cClientHandle::MIN_VIEW_DISTANCE)
+	server->m_ClientViewDistance = a_SettingsIni.GetValueSetI("Server", "DefaultViewDistance", cClientHandle::DEFAULT_VIEW_DISTANCE);
+	if (server->m_ClientViewDistance < cClientHandle::MIN_VIEW_DISTANCE)
 	{
-		m_ClientViewDistance = cClientHandle::MIN_VIEW_DISTANCE;
-		LOGINFO("Setting default viewdistance to the minimum of %d", m_ClientViewDistance);
+		server->m_ClientViewDistance = cClientHandle::MIN_VIEW_DISTANCE;
+		LOGINFO("Setting default viewdistance to the minimum of %d", server->m_ClientViewDistance);
 	}
-	if (m_ClientViewDistance > cClientHandle::MAX_VIEW_DISTANCE)
+	if (server->m_ClientViewDistance > cClientHandle::MAX_VIEW_DISTANCE)
 	{
-		m_ClientViewDistance = cClientHandle::MAX_VIEW_DISTANCE;
-		LOGINFO("Setting default viewdistance to the maximum of %d", m_ClientViewDistance);
+		server->m_ClientViewDistance = cClientHandle::MAX_VIEW_DISTANCE;
+		LOGINFO("Setting default viewdistance to the maximum of %d", server->m_ClientViewDistance);
 	}
 	
-	m_NotifyWriteThread.Start(this);
+	server->m_NotifyWriteThread.Start(server.get());
 	
-	PrepareKeys();
+	server->PrepareKeys();
 	
-	return true;
+	return server;
 }
 
 
@@ -327,7 +300,7 @@ void cServer::PrepareKeys(void)
 
 
 
-void cServer::OnConnectionAccepted(cSocket & a_Socket)
+/*void cServer::OnConnectionAccepted(cSocket & a_Socket)
 {
 	if (!a_Socket.IsValid())
 	{
@@ -357,7 +330,7 @@ void cServer::OnConnectionAccepted(cSocket & a_Socket)
 	
 	cCSLock Lock(m_CSClients);
 	m_Clients.push_back(NewHandle);
-}
+}*/
 
 
 
@@ -440,21 +413,33 @@ void cServer::TickClients(float a_Dt)
 
 
 
-bool cServer::Start(void)
+bool cServer::Start(cIniFile a_SettingsIni)
 {
-	if (!m_ListenThreadIPv4.Start())
+	
+	AStringVector Ports = ReadUpgradeIniPorts(a_SettingsIni, "Server", "Ports", "Port", "PortsIPv6", "25565");
+	
+	for (auto Port : Ports)
 	{
-		return false;
+		UInt16 PortNum;
+		if(!StringToInteger<UInt16>(Port, PortNum))
+		{
+			LOGINFO("Invalid Server Port value: \"%s\". Ignoring.", Port.c_str());
+			continue;
+		}
+		
+		auto Handle = cNetwork::Listen(PortNum, std::make_shared<cListenCallbacks>());
+		if (Handle->IsListening()) 
+		{
+			m_ServerHandles.push_back(Handle);
+		}
 	}
-	if (!m_ListenThreadIPv6.Start())
+	
+	if (m_ServerHandles.empty())
 	{
-		return false;
+		LOGERROR("Couldn't open any ports. Aborting the server");
 	}
-	if (!m_TickThread.Start())
-	{
-		return false;
-	}
-	return true;
+	
+	return !m_ServerHandles.empty();
 }
 
 
@@ -670,8 +655,12 @@ void cServer::BindBuiltInConsoleCommands(void)
 
 void cServer::Shutdown(void)
 {
-	m_ListenThreadIPv4.Stop();
-	m_ListenThreadIPv6.Stop();
+	for (auto handle : m_ServerHandles) 
+	{
+		handle->Close();
+	}
+	
+	m_ServerHandles.clear();
 	
 	m_bRestarting = true;
 	m_RestartEvent.Wait();

@@ -122,8 +122,6 @@ void cRoot::Start(void)
 
 		LoadGlobalSettings();
 
-		LOG("Creating new server instance...");
-		m_Server = new cServer();
 
 		LOG("Reading server config...");
 		cIniFile IniFile;
@@ -135,11 +133,17 @@ void cRoot::Start(void)
 			IniFile.AddHeaderComment(" See: http://wiki.mc-server.org/doku.php?id=configure:settings.ini for further configuration help");
 		}
 
-		LOG("Starting server...");
+		LOG("Starting auth service...");
+
 		m_MojangAPI = new cMojangAPI;
 		bool ShouldAuthenticate = IniFile.GetValueSetB("Authentication", "Authenticate", true);
 		m_MojangAPI->Start(IniFile, ShouldAuthenticate);  // Mojang API needs to be started before plugins, so that plugins may use it for DB upgrades on server init
-		if (!m_Server->InitServer(IniFile, ShouldAuthenticate))
+		
+		
+		LOG("Starting server...");
+		
+		m_Server = cServer::CreateServer(IniFile, ShouldAuthenticate);
+		if (m_Server == nullptr)
 		{
 			IniFile.WriteFile("settings.ini");
 			LOGERROR("Failure starting server, aborting...");
@@ -181,7 +185,23 @@ void cRoot::Start(void)
 		IniFile.WriteFile("settings.ini");
 
 		LOGD("Finalising startup...");
-		m_Server->Start();
+		if (!m_Server->Start(IniFile)) {
+			IniFile.WriteFile("settings.ini");
+			delete m_MojangAPI;
+			dd.Stop();
+			StopWorlds();
+			m_Authenticator.Stop();
+			delete m_MonsterConfig;
+			delete m_WebAdmin;
+			delete m_FurnaceRecipe;
+			delete m_CraftingRecipes;
+			UnloadWorlds();
+			delete m_PluginManager;
+			cItemHandler::Deinit();
+			return;
+		}
+		
+		IniFile.WriteFile("settings.ini");
 		
 		m_WebAdmin->Start();
 
@@ -246,7 +266,7 @@ void cRoot::Start(void)
 		cItemHandler::Deinit();
 
 		LOG("Cleaning up...");
-		delete m_Server; m_Server = nullptr;
+		m_Server = std::unique_ptr<cServer>();
 
 		LOG("Shutdown successful!");
 	}
