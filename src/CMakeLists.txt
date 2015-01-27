@@ -19,6 +19,7 @@ SET (SRCS
 	BlockID.cpp
 	BlockInfo.cpp
 	BoundingBox.cpp
+	BoundingBoxTree.cpp
 	ByteBuffer.cpp
 	ChatColor.cpp
 	Chunk.cpp
@@ -78,6 +79,7 @@ SET (HDRS
 	BlockInfo.h
 	BlockTracer.h
 	BoundingBox.h
+	BoundingBoxTree.h
 	BuildInfo.h.cmake
 	ByteBuffer.h
 	ChatColor.h

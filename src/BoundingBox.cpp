@@ -4,6 +4,7 @@
 
 #include "Globals.h"
 #include "BoundingBox.h"
+#include "BoundingBoxTree.h"
 #include "Defines.h"
 
 
@@ -113,12 +114,21 @@ cBoundingBox::cBoundingBox(const cBoundingBox & a_Orig) :
 
 void cBoundingBox::Move(double a_OffX, double a_OffY, double a_OffZ)
 {
+	// remove cBoundingBox from trees before modifying
+	std::set<cBoundingBoxTree*> tmp(treeReferences);
+	for (std::set<cBoundingBoxTree*>::iterator it=treeReferences.begin(); it!=treeReferences.end(); ++it)
+		((cBoundingBoxTree*) *it)->Remove(this);
+
 	m_Min.x += a_OffX;
 	m_Min.y += a_OffY;
 	m_Min.z += a_OffZ;
 	m_Max.x += a_OffX;
 	m_Max.y += a_OffY;
 	m_Max.z += a_OffZ;
+
+	// insert cBoundingBox back to trees after modifying
+	for (std::set<cBoundingBoxTree*>::iterator it=tmp.begin(); it!=tmp.end(); ++it)
+		((cBoundingBoxTree*) *it)->Insert(this);
 }
 
 
@@ -127,12 +137,7 @@ void cBoundingBox::Move(double a_OffX, double a_OffY, double a_OffZ)
 
 void cBoundingBox::Move(const Vector3d & a_Off)
 {
-	m_Min.x += a_Off.x;
-	m_Min.y += a_Off.y;
-	m_Min.z += a_Off.z;
-	m_Max.x += a_Off.x;
-	m_Max.y += a_Off.y;
-	m_Max.z += a_Off.z;
+	Move(a_Off.x, a_Off.y, a_Off.z);
 }
 
 
@@ -141,12 +146,21 @@ void cBoundingBox::Move(const Vector3d & a_Off)
 
 void cBoundingBox::Expand(double a_ExpandX, double a_ExpandY, double a_ExpandZ)
 {
+	// remove cBoundingBox from trees before modifying
+	std::set<cBoundingBoxTree*> tmp(treeReferences);
+	for (std::set<cBoundingBoxTree*>::iterator it=treeReferences.begin(); it!=treeReferences.end(); ++it)
+		((cBoundingBoxTree*) *it)->Remove(this);
+
 	m_Min.x -= a_ExpandX;
 	m_Min.y -= a_ExpandY;
 	m_Min.z -= a_ExpandZ;
 	m_Max.x += a_ExpandX;
 	m_Max.y += a_ExpandY;
 	m_Max.z += a_ExpandZ;
+
+	// insert cBoundingBox back to trees after modifying
+	for (std::set<cBoundingBoxTree*>::iterator it=tmp.begin(); it!=tmp.end(); ++it)
+		((cBoundingBoxTree*) *it)->Insert(this);
 }
 
 
@@ -347,3 +361,16 @@ bool cBoundingBox::Intersect(const cBoundingBox & a_Other, cBoundingBox & a_Inte
 
 
 
+
+void cBoundingBox::addTreeReference(cBoundingBoxTree* a_Tree)
+{
+	treeReferences.insert(a_Tree);
+}
+
+
+
+
+void cBoundingBox::removeTreeReference(cBoundingBoxTree* a_Tree)
+{
+	treeReferences.erase(a_Tree);
+}

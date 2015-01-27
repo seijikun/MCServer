@@ -10,8 +10,9 @@
 
 #include "Vector3.h"
 #include "Defines.h"
+#include <set>
 
-
+class cBoundingBoxTree;
 
 
 
@@ -24,6 +25,7 @@ the boxes are considered non-intersecting.
 */
 class cBoundingBox
 {
+
 public:
 	cBoundingBox(double a_MinX, double a_MaxX, double a_MinY, double a_MaxY, double a_MinZ, double a_MaxZ);
 	cBoundingBox(const Vector3d & a_Min, const Vector3d & a_Max);
@@ -76,7 +78,7 @@ public:
 	static bool CalcLineIntersection(const Vector3d & a_Min, const Vector3d & a_Max, const Vector3d & a_Line1, const Vector3d & a_Line2, double & a_LineCoeff, eBlockFace & a_Face);
 	
 	// tolua_end
-	
+
 	/// Calculates the intersection of the two bounding boxes; returns true if nonempty
 	bool Intersect(const cBoundingBox & a_Other, cBoundingBox & a_Intersection);
 	
@@ -90,11 +92,19 @@ public:
 	
 	const Vector3d & GetMin(void) const { return m_Min; }
 	const Vector3d & GetMax(void) const { return m_Max; }
-	
+
+	/// Used by cBoundingBoxTree to notify the BoundingBox, when added to a tree
+	void addTreeReference(cBoundingBoxTree* a_Tree);
+
+	/// Used by cBoundingBoxTree to notify the BoundingBox, when removed from a tree
+	void removeTreeReference(cBoundingBoxTree* a_Tree);
+
+
 protected:
 	Vector3d m_Min;
 	Vector3d m_Max;
 	
+	std::set<cBoundingBoxTree*> treeReferences;
 } ;  // tolua_export
 
 
